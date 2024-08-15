@@ -10,11 +10,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
-func Test() {
-	fmt.Println("testing golang packages")
-}
-
-func ConnectToDb(connect SQLConnectionInfo) (*sql.DB, error) {
+func ConnectToMySQLDB(connect SQLConnectionInfo) (*sql.DB, error) {
 	cfg := mysql.Config{
 		User:   connect.User,
 		Passwd: connect.Passwd,
@@ -26,12 +22,12 @@ func ConnectToDb(connect SQLConnectionInfo) (*sql.DB, error) {
 	var err error
 	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
-		return nil, fmt.Errorf("connectToDb - opening db: %w", err)
+		return nil, fmt.Errorf("ConnectToMySQLDB - opening db: %w", err)
 	}
 
 	err = db.Ping()
 	if err != nil {
-		return nil, fmt.Errorf("connectToDb - pinging db: %w", err)
+		return nil, fmt.Errorf("ConnectToMySQLDB - pinging db: %w", err)
 	}
 
 	return db, nil
@@ -40,7 +36,7 @@ func ConnectToDb(connect SQLConnectionInfo) (*sql.DB, error) {
 func GetTables(db *sql.DB) ([]string, error) {
 	rows, err := db.Query("SHOW TABLES")
 	if err != nil {
-		return nil, fmt.Errorf("getTables - fetching tables: %w", err)
+		return nil, fmt.Errorf("GetTables - fetching tables: %w", err)
 	}
 	defer rows.Close()
 
@@ -48,7 +44,7 @@ func GetTables(db *sql.DB) ([]string, error) {
 	for rows.Next() {
 		var tableName string
 		if err := rows.Scan(&tableName); err != nil {
-			return nil, fmt.Errorf("getTables - scanning row: %w", err)
+			return nil, fmt.Errorf("GetTables - scanning row: %w", err)
 		}
 		tableNames = append(tableNames, tableName)
 	}
@@ -59,13 +55,13 @@ func GetTable(db *sql.DB, tableName string) (interface{}, error) {
 	query := fmt.Sprintf("SELECT * FROM `%s`;", tableName)
 	rows, err := db.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("getTable - query: %w", err)
+		return nil, fmt.Errorf("GetTable - query: %w", err)
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("getTable - retrieving columns: %w", err)
+		return nil, fmt.Errorf("GetTable - retrieving columns: %w", err)
 	}
 
 	sliceType := reflect.SliceOf(reflect.StructOf(createFields(columns)))
@@ -80,14 +76,14 @@ func GetTable(db *sql.DB, tableName string) (interface{}, error) {
 		}
 
 		if err := rows.Scan(fields...); err != nil {
-			return nil, fmt.Errorf("getTable - scanning row: %w", err)
+			return nil, fmt.Errorf("GetTable - scanning row: %w", err)
 		}
 
 		sliceValue = reflect.Append(sliceValue, elemValue)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("getTable - rows iteration: %w", err)
+		return nil, fmt.Errorf("GetTable - rows iteration: %w", err)
 	}
 
 	return sliceValue.Interface(), nil
@@ -103,7 +99,7 @@ func GetColumns(db *sql.DB, tableName string) ([]string, error) {
 
 	rows, err := db.Query(query, tableName)
 	if err != nil {
-		return nil, fmt.Errorf("getColumns: %v", err)
+		return nil, fmt.Errorf("GetColumns: %v", err)
 	}
 	defer rows.Close()
 
@@ -111,13 +107,13 @@ func GetColumns(db *sql.DB, tableName string) ([]string, error) {
 	for rows.Next() {
 		var column string
 		if err := rows.Scan(&column); err != nil {
-			return nil, fmt.Errorf("getColumns: %v", err)
+			return nil, fmt.Errorf("GetColumns: %v", err)
 		}
 		columns = append(columns, column)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("getColumns: %v", err)
+		return nil, fmt.Errorf("GetColumns: %v", err)
 	}
 
 	return columns, nil
@@ -125,7 +121,7 @@ func GetColumns(db *sql.DB, tableName string) ([]string, error) {
 
 func AddRecord(db *sql.DB, tableName string, columns []string, values []interface{}) (int64, error) {
 	if len(columns) == 0 || len(values) == 0 || len(columns) != len(values) {
-		return 0, fmt.Errorf("addRecord: invalid columns or values length")
+		return 0, fmt.Errorf("AddRecord: invalid columns or values length")
 	}
 
 	placeholders := strings.Repeat("?, ", len(values)-1) + "?"
@@ -138,12 +134,12 @@ func AddRecord(db *sql.DB, tableName string, columns []string, values []interfac
 
 	result, err := db.Exec(query, values...)
 	if err != nil {
-		return 0, fmt.Errorf("addRecord: %v", err)
+		return 0, fmt.Errorf("AddRecord: %v", err)
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("addRecord: %v", err)
+		return 0, fmt.Errorf("AddRecord: %v", err)
 	}
 
 	return id, nil
@@ -161,16 +157,16 @@ func EditRecord(
 
 	result, err := db.Exec(query, updateValue, recordIdValue)
 	if err != nil {
-		return fmt.Errorf("editRecord: %v", err)
+		return fmt.Errorf("EditRecord: %v", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("editRecord - could not get rows affected: %v", err)
+		return fmt.Errorf("EditRecord - could not get rows affected: %v", err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("editRecord - no rows were updated")
+		return fmt.Errorf("EditRecord - no rows were updated")
 	}
 
 	return nil
@@ -178,10 +174,10 @@ func EditRecord(
 
 func RemoveRecord(db *sql.DB, tableName string, columns []string, values []interface{}) (int64, error) {
 	if len(columns) != len(values) {
-		return 0, fmt.Errorf("removeRecord: columns and values length mismatch")
+		return 0, fmt.Errorf("RemoveRecord: columns and values length mismatch")
 	}
 	if len(columns) == 0 {
-		return 0, fmt.Errorf("removeRecord: columns array cannot be empty")
+		return 0, fmt.Errorf("RemoveRecord: columns array cannot be empty")
 	}
 
 	var conditions []string
@@ -214,7 +210,7 @@ func GetPrimaryKeys(db *sql.DB, dbName, tableName string) ([]string, error) {
 
 	rows, err := db.Query(query, dbName, tableName)
 	if err != nil {
-		return nil, fmt.Errorf("getPrimaryKeys: failed to execute query: %w", err)
+		return nil, fmt.Errorf("GetPrimaryKeys: failed to execute query: %w", err)
 	}
 	defer rows.Close()
 
@@ -222,13 +218,13 @@ func GetPrimaryKeys(db *sql.DB, dbName, tableName string) ([]string, error) {
 	for rows.Next() {
 		var columnName string
 		if err := rows.Scan(&columnName); err != nil {
-			return nil, fmt.Errorf("getPrimaryKeys: failed to scan row: %w", err)
+			return nil, fmt.Errorf("GetPrimaryKeys: failed to scan row: %w", err)
 		}
 		primaryKeys = append(primaryKeys, columnName)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("getPrimaryKeys: rows iteration error: %w", err)
+		return nil, fmt.Errorf("GetPrimaryKeys: rows iteration error: %w", err)
 	}
 
 	return primaryKeys, nil
@@ -237,19 +233,19 @@ func GetPrimaryKeys(db *sql.DB, dbName, tableName string) ([]string, error) {
 func DuplicateTable(db *sql.DB, originalTableName, newTableName string) error {
 	validName := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 	if !validName.MatchString(originalTableName) || !validName.MatchString(newTableName) {
-		return fmt.Errorf("duplicateTable: table names must contain only letters, numbers, underscores, and dashes")
+		return fmt.Errorf("DuplicateTable: table names must contain only letters, numbers, underscores, and dashes")
 	}
 
 	createTableQuery := fmt.Sprintf("CREATE TABLE `%s` LIKE `%s`;", newTableName, originalTableName)
 	_, err := db.Exec(createTableQuery)
 	if err != nil {
-		return fmt.Errorf("duplicateTable: failed to create table structure: %v", err)
+		return fmt.Errorf("DuplicateTable: failed to create table structure: %v", err)
 	}
 
 	insertDataQuery := fmt.Sprintf("INSERT INTO `%s` SELECT * FROM `%s`;", newTableName, originalTableName)
 	_, err = db.Exec(insertDataQuery)
 	if err != nil {
-		return fmt.Errorf("duplicateTable: failed to insert data into new table: %v", err)
+		return fmt.Errorf("DuplicateTable: failed to insert data into new table: %v", err)
 	}
 
 	return nil
@@ -260,7 +256,7 @@ func DeleteTable(db *sql.DB, tableName string) error {
 
 	_, err := db.Exec(query)
 	if err != nil {
-		return fmt.Errorf("deleteTable: failed to delete table %s: %v", tableName, err)
+		return fmt.Errorf("DeleteTable: failed to delete table %s: %v", tableName, err)
 	}
 
 	return nil
@@ -271,7 +267,7 @@ func RenameTable(db *sql.DB, oldTableName string, newTableName string) error {
 
 	_, err := db.Exec(query)
 	if err != nil {
-		return fmt.Errorf("renameTable: could not rename table: %v", err)
+		return fmt.Errorf("RenameTable: could not rename table: %v", err)
 	}
 
 	return nil
