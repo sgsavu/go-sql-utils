@@ -1,4 +1,4 @@
-module github.com/sgsavu/sqlutils
+module github.com/sgsavu/sqlutils/v2
 
 go 1.22.5
 
