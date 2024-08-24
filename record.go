@@ -6,12 +6,15 @@ import (
 	"strings"
 )
 
-func AddRecord(db *sql.DB, tableName string, columns []string, values []interface{}) (int64, error) {
+func InsertRecord(db *sql.DB, tableName string, columns []string, values []interface{}, databaseType DatabaseType) (int64, error) {
 	if len(columns) == 0 || len(values) == 0 || len(columns) != len(values) {
 		return 0, fmt.Errorf("AddRecord: invalid columns or values length")
 	}
 
-	placeholders := strings.Repeat("?, ", len(values)-1) + "?"
+	placeholders, err := getInsertQueryPlaceholders(values, databaseType)
+	if err != nil {
+		return 0, fmt.Errorf("AddRecord: %v", err)
+	}
 
 	query := fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)",
 		tableName,
@@ -36,13 +39,27 @@ func EditRecord(
 	db *sql.DB,
 	tableName string,
 	recordIdColumn string,
-	recordIdValue string,
+	recordIdValue any,
 	updateColumn string,
 	updateValue any,
+	databaseType DatabaseType,
 ) error {
-	query := fmt.Sprintf("UPDATE `%s` SET %s = ?  WHERE %s = ?", tableName, updateColumn, recordIdColumn)
+	placeholder, err := getQueryPlaceholder(databaseType)
+	if err != nil {
+		return err
+	}
 
-	result, err := db.Exec(query, updateValue, recordIdValue)
+	query := fmt.Sprintf("UPDATE `%s` SET %s = %s WHERE %s = %s",
+		tableName,
+		updateColumn,
+		placeholder,
+		recordIdColumn,
+		placeholder,
+	)
+
+	args := []interface{}{updateValue, recordIdValue}
+
+	result, err := db.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("EditRecord: %v", err)
 	}
@@ -57,21 +74,6 @@ func EditRecord(
 	}
 
 	return nil
-}
-
-type DatabaseInfo struct {
-	PlaceholderFormat func(int) string
-	QuoteChar         string
-}
-
-var dbInfoMap = map[DatabaseType]DatabaseInfo{
-	MySQL:       {PlaceholderFormat: func(i int) string { return "?" }, QuoteChar: "`"},
-	PostgreSQL:  {PlaceholderFormat: func(i int) string { return fmt.Sprintf("$%d", i) }, QuoteChar: "\""},
-	SQLite:      {PlaceholderFormat: func(i int) string { return "?" }, QuoteChar: "\""},
-	SQLServer:   {PlaceholderFormat: func(i int) string { return fmt.Sprintf("@p%d", i) }, QuoteChar: "\""},
-	Oracle:      {PlaceholderFormat: func(i int) string { return fmt.Sprintf(":%d", i) }, QuoteChar: "\""},
-	MariaDB:     {PlaceholderFormat: func(i int) string { return "?" }, QuoteChar: "`"},
-	CockroachDB: {PlaceholderFormat: func(i int) string { return "?" }, QuoteChar: "\""},
 }
 
 // First tries to remove record by primary keys, if no primary keys exist then remove record(s) which meets all values
@@ -112,6 +114,10 @@ func RemoveRecord(db *sql.DB, dbName, tableName string, databaseType DatabaseTyp
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
 			return 0, err
+		}
+
+		if rowsAffected == 0 {
+			return 0, fmt.Errorf("RemoveRecord: non-existent record(s)")
 		}
 
 		return rowsAffected, nil

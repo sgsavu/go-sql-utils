@@ -7,6 +7,21 @@ import (
 	"time"
 )
 
+func IsTableExistent(db *sql.DB, tableName string, dbType DatabaseType) error {
+	query, err := getQueryForIsTableExistent(tableName, dbType)
+	if err != nil {
+		return fmt.Errorf("IsTableExistent - grabbing db type specific query: %w", err)
+	}
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return fmt.Errorf("IsTableExistent - query: %w", err)
+	}
+	rows.Close()
+
+	return nil
+}
+
 func GetTables(db *sql.DB, dbName string, dbType DatabaseType) ([]string, error) {
 	query, err := getQueryForTables(dbName, dbType)
 	if err != nil {
@@ -93,6 +108,11 @@ func GetTable(db *sql.DB, tableName string, dbType DatabaseType) ([]map[string]i
 }
 
 func GetColumns(db *sql.DB, tableName string, databaseType DatabaseType) ([]string, error) {
+	err := IsTableExistent(db, tableName, databaseType)
+	if err != nil {
+		return nil, fmt.Errorf("GetColumns - %w", err)
+	}
+
 	query, err := getQueryForColumns(databaseType)
 	if err != nil {
 		return nil, fmt.Errorf("GetColumns - grabbing db type specific query: %w", err)
@@ -132,6 +152,11 @@ func GetColumns(db *sql.DB, tableName string, databaseType DatabaseType) ([]stri
 
 func GetPrimaryKeys(db *sql.DB, dbName, tableName string, databaseType DatabaseType) ([]string, error) {
 	var err error
+	err = IsTableExistent(db, tableName, databaseType)
+	if err != nil {
+		return nil, fmt.Errorf("GetColumns - %w", err)
+	}
+
 	query, err := getQueryForPrimaryKeys(databaseType)
 	if err != nil {
 		return nil, fmt.Errorf("GetPrimaryKeys - grabbing db type specific query: %w", err)
@@ -151,7 +176,7 @@ func GetPrimaryKeys(db *sql.DB, dbName, tableName string, databaseType DatabaseT
 	}
 	defer rows.Close()
 
-	var primaryKeys = []string{}
+	var primaryKeys []string
 	for rows.Next() {
 		var columnName string
 		if databaseType == SQLite {
