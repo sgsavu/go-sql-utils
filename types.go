@@ -20,3 +20,5 @@ type SQLConnectionInfo struct {
 	User   string       `json:"user"`
 	Passwd string       `json:"password"`
 }
+
+type TableRecord map[string]interface{}

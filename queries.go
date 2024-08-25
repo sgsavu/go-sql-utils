@@ -2,25 +2,26 @@ package sqlutils
 
 import (
 	"fmt"
-	"strings"
 )
 
-var IsTableExistentQueryTemplate = map[DatabaseType]string{
-	MySQL:       "SELECT 1 FROM `%s`;",
-	MariaDB:     "SELECT 1 FROM `%s`;",
-	SQLServer:   "SELECT 1 FROM %s;",
-	PostgreSQL:  "SELECT 1 FROM \"%s\";",
-	SQLite:      "SELECT 1 FROM `%s`;",
-	Oracle:      "SELECT 1 FROM %s;",
-	CockroachDB: "SELECT 1 FROM \"%s\";",
+var quoteCharMap = map[DatabaseType]string{
+	MySQL:       "`",
+	MariaDB:     "`",
+	SQLite:      "\"",
+	CockroachDB: "\"",
+	PostgreSQL:  "\"",
+	SQLServer:   "\"",
+	Oracle:      "\"",
 }
 
-func getQueryForIsTableExistent(dbName string, databaseType DatabaseType) (string, error) {
-	template, ok := IsTableExistentQueryTemplate[databaseType]
-	if !ok {
-		return "", fmt.Errorf("unsupported database type: %s", databaseType)
-	}
-	return fmt.Sprintf(template, dbName), nil
+var placeholderMap = map[DatabaseType]string{
+	MySQL:       "?",
+	MariaDB:     "?",
+	SQLite:      "?",
+	CockroachDB: "?", // could be $ instead
+	PostgreSQL:  "$",
+	SQLServer:   "@p",
+	Oracle:      ":",
 }
 
 var tablesQueryTemplates = map[DatabaseType]string{
@@ -165,65 +166,6 @@ func getQueryForDuplicateTableInsert(databaseType DatabaseType) (string, error) 
 		return "", fmt.Errorf("unsupported database type: %s", databaseType)
 	}
 	return template, nil
-}
-
-type DatabaseInfo struct {
-	PlaceholderFormat func(int) string
-	QuoteChar         string
-}
-
-var dbInfoMap = map[DatabaseType]DatabaseInfo{
-	MySQL:       {PlaceholderFormat: func(i int) string { return "?" }, QuoteChar: "`"},
-	MariaDB:     {PlaceholderFormat: func(i int) string { return "?" }, QuoteChar: "`"},
-	SQLite:      {PlaceholderFormat: func(i int) string { return "?" }, QuoteChar: "\""},
-	CockroachDB: {PlaceholderFormat: func(i int) string { return "?" }, QuoteChar: "\""},
-	PostgreSQL:  {PlaceholderFormat: func(i int) string { return fmt.Sprintf("$%d", i) }, QuoteChar: "\""},
-	SQLServer:   {PlaceholderFormat: func(i int) string { return fmt.Sprintf("@p%d", i) }, QuoteChar: "\""},
-	Oracle:      {PlaceholderFormat: func(i int) string { return fmt.Sprintf(":%d", i) }, QuoteChar: "\""},
-}
-
-func getQueryPlaceholder(driverName DatabaseType) (string, error) {
-	switch driverName {
-	case MySQL, MariaDB, SQLite:
-		return "?", nil
-	case PostgreSQL, CockroachDB:
-		return "$1", nil
-	case SQLServer:
-		return "@p1", nil
-	case Oracle:
-		return ":1", nil
-	default:
-		return "", fmt.Errorf("unsupported driver %s", driverName)
-	}
-}
-
-func getInsertQueryPlaceholders(values []interface{}, databaseType DatabaseType) (string, error) {
-	var placeholders string
-
-	switch databaseType {
-	case MySQL, MariaDB:
-		placeholders = strings.Repeat("?, ", len(values)-1) + "?"
-	case PostgreSQL:
-		placeholders = strings.Repeat("$", len(values))
-		for i := 1; i < len(values); i++ {
-			placeholders += ", $" + fmt.Sprint(i+1)
-		}
-	case SQLite:
-		placeholders = strings.Repeat("?, ", len(values)-1) + "?"
-	case SQLServer:
-		placeholders = strings.Repeat("@p%d, ", len(values)-1) + "@p%d"
-	case Oracle:
-		placeholders = strings.Repeat(":1, ", len(values)-1) + ":1"
-	case CockroachDB:
-		placeholders = strings.Repeat("$", len(values))
-		for i := 1; i < len(values); i++ {
-			placeholders += ", $" + fmt.Sprint(i+1)
-		}
-	default:
-		return "", fmt.Errorf("AddRecord: unsupported driver %s", databaseType)
-	}
-
-	return placeholders, nil
 }
 
 func getConnectionString(connInfo *SQLConnectionInfo) (string, error) {

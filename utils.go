@@ -2,6 +2,7 @@ package sqlutils
 
 import (
 	"encoding/base64"
+	"runtime"
 )
 
 func isBase64(b []byte) bool {
@@ -16,11 +17,7 @@ func decodeBase64(b []byte) (string, error) {
 	return string(decoded), nil
 }
 
-func findIndex(slice []string, item string) int {
-	for i, v := range slice {
-		if v == item {
-			return i
-		}
-	}
-	return -1
+func getCurrentFuncName() string {
+	pc, _, _, _ := runtime.Caller(1)
+	return runtime.FuncForPC(pc).Name()
 }

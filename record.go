@@ -6,30 +6,81 @@ import (
 	"strings"
 )
 
-func InsertRecord(db *sql.DB, tableName string, columns []string, values []interface{}, databaseType DatabaseType) (int64, error) {
-	if len(columns) == 0 || len(values) == 0 || len(columns) != len(values) {
-		return 0, fmt.Errorf("AddRecord: invalid columns or values length")
+// Extracts the keys and the values from the record
+func extractRecordData(record TableRecord) ([]string, []interface{}) {
+	var recordKeys = make([]string, len(record))
+	var recordValues = make([]interface{}, len(record))
+	var index = 0
+
+	for key, value := range record {
+		recordKeys[index] = key
+		recordValues[index] = value
+		index += 1
 	}
 
-	placeholders, err := getInsertQueryPlaceholders(values, databaseType)
-	if err != nil {
-		return 0, fmt.Errorf("AddRecord: %v", err)
+	return recordKeys, recordValues
+}
+
+// Example return: order_id = ? AND customer_number = ?
+func computeConditions(keys []string, databaseType DatabaseType, placeholder string) string {
+	conditions := make([]string, len(keys))
+	for index, key := range keys {
+		local_placeholder := placeholder
+
+		switch databaseType {
+		case PostgreSQL, SQLServer, Oracle:
+			local_placeholder = fmt.Sprintf("%s%d", local_placeholder, index)
+		}
+
+		conditions[index] = fmt.Sprintf("%s = %s", key, local_placeholder)
 	}
 
-	query := fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)",
-		tableName,
-		strings.Join(columns, ", "),
+	return strings.Join(conditions, " AND ")
+}
+
+func InsertRecord(
+	db *sql.DB,
+	tableName string,
+	record TableRecord,
+	databaseType DatabaseType,
+) (int64, error) {
+	recordKeys, recordValues := extractRecordData(record)
+
+	quoteChar, ok := quoteCharMap[databaseType]
+	if !ok {
+		return 0, fmt.Errorf("%s - database type not supported", getCurrentFuncName())
+	}
+	placeholder, ok := placeholderMap[databaseType]
+	if !ok {
+		return 0, fmt.Errorf("%s - database type not supported", getCurrentFuncName())
+	}
+
+	repeatedPlaceholder := strings.Repeat(placeholder, len(recordValues))
+	repeatedPlaceholderArray := strings.Split(repeatedPlaceholder, "")
+
+	switch databaseType {
+	case PostgreSQL, SQLServer, Oracle:
+		for index := range repeatedPlaceholderArray {
+			repeatedPlaceholderArray[index] = fmt.Sprintf("%s%d", repeatedPlaceholderArray[index], index)
+		}
+	}
+
+	placeholders := strings.Join(repeatedPlaceholderArray, ", ")
+
+	query := fmt.Sprintf("INSERT INTO %s%s%s (%s) VALUES (%s)",
+		quoteChar, tableName, quoteChar,
+		strings.Join(recordKeys, ", "),
 		placeholders,
 	)
 
-	result, err := db.Exec(query, values...)
+	result, err := db.Exec(query, recordValues...)
 	if err != nil {
-		return 0, fmt.Errorf("AddRecord: %v", err)
+		return 0, fmt.Errorf("%s - %v", getCurrentFuncName(), err)
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("AddRecord: %v", err)
+		return 0, fmt.Errorf("%s - %v", getCurrentFuncName(), err)
 	}
 
 	return id, nil
@@ -38,75 +89,97 @@ func InsertRecord(db *sql.DB, tableName string, columns []string, values []inter
 func EditRecord(
 	db *sql.DB,
 	tableName string,
-	recordIdColumn string,
-	recordIdValue any,
+	record TableRecord,
 	updateColumn string,
 	updateValue any,
 	databaseType DatabaseType,
 ) error {
-	placeholder, err := getQueryPlaceholder(databaseType)
-	if err != nil {
-		return err
+	quoteChar, ok := quoteCharMap[databaseType]
+	if !ok {
+		return fmt.Errorf("%s - database type not supported", getCurrentFuncName())
+	}
+	placeholder, ok := placeholderMap[databaseType]
+	if !ok {
+		return fmt.Errorf("%s - database type not supported", getCurrentFuncName())
 	}
 
-	query := fmt.Sprintf("UPDATE `%s` SET %s = %s WHERE %s = %s",
-		tableName,
-		updateColumn,
-		placeholder,
-		recordIdColumn,
-		placeholder,
+	// also add identify by primary key like when removing
+
+	switch databaseType {
+	case PostgreSQL, SQLServer, Oracle:
+		placeholder = fmt.Sprintf("%s%d", placeholder, 1)
+	}
+
+	recordKeys, recordValues := extractRecordData(record)
+	conditions := computeConditions(recordKeys, databaseType, placeholder)
+
+	query := fmt.Sprintf("UPDATE %s%s%s SET %s = %s WHERE %s",
+		quoteChar, tableName, quoteChar,
+		updateColumn, placeholder,
+		conditions,
 	)
 
-	args := []interface{}{updateValue, recordIdValue}
+	args := append([]interface{}{updateValue}, recordValues...)
 
 	result, err := db.Exec(query, args...)
 	if err != nil {
-		return fmt.Errorf("EditRecord: %v", err)
+		return fmt.Errorf("%s - %v", getCurrentFuncName(), err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("EditRecord - could not get rows affected: %v", err)
+		return fmt.Errorf("%s - could not get rows affected - %v", getCurrentFuncName(), err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("EditRecord - no rows were updated")
+		return fmt.Errorf("%s - no rows were updated", getCurrentFuncName())
 	}
 
 	return nil
 }
 
-// First tries to remove record by primary keys, if no primary keys exist then remove record(s) which meets all values
-func RemoveRecord(db *sql.DB, dbName, tableName string, databaseType DatabaseType, values []interface{}) (int64, error) {
-	dbInfo, ok := dbInfoMap[databaseType]
-	if !ok {
-		return 0, fmt.Errorf("RemoveRecord: unsupported database type %s", databaseType)
-	}
-
+func RemoveRecord(
+	db *sql.DB,
+	dbName,
+	tableName string,
+	databaseType DatabaseType,
+	record TableRecord,
+) (int64, error) {
 	primaryKeys, err := GetPrimaryKeys(db, dbName, tableName, databaseType)
 	if err != nil {
-		return 0, fmt.Errorf("RemoveRecord: error grabbing primary keys: %w", err)
+		return 0, fmt.Errorf("%s - error grabbing primary keys: %w", getCurrentFuncName(), err)
 	}
 
-	columns, err := GetColumns(db, tableName, databaseType)
-	if err != nil {
-		return 0, fmt.Errorf("RemoveRecord: error grabbing table columns: %w", err)
+	quoteChar, ok := quoteCharMap[databaseType]
+	if !ok {
+		return 0, fmt.Errorf("%s - database type not supported", getCurrentFuncName())
+	}
+	placeholder, ok := placeholderMap[databaseType]
+	if !ok {
+		return 0, fmt.Errorf("%s - database type not supported", getCurrentFuncName())
 	}
 
+	// remove by primary key if any available
 	if len(primaryKeys) != 0 {
 		firstPrimaryKey := primaryKeys[0]
 
-		index := findIndex(columns, firstPrimaryKey)
+		primaryKeyValue, ok := record[firstPrimaryKey]
+		if !ok {
+			return 0, fmt.Errorf("%s - primary key not provided", getCurrentFuncName())
+		}
 
-		value := values[index]
+		switch databaseType {
+		case PostgreSQL, SQLServer, Oracle:
+			placeholder = fmt.Sprintf("%s%d", placeholder, 1)
+		}
 
 		query := fmt.Sprintf("DELETE FROM %s%s%s WHERE %s%s%s = %s",
-			dbInfo.QuoteChar, tableName, dbInfo.QuoteChar,
-			dbInfo.QuoteChar, firstPrimaryKey, dbInfo.QuoteChar,
-			dbInfo.PlaceholderFormat(1),
+			quoteChar, tableName, quoteChar,
+			quoteChar, firstPrimaryKey, quoteChar,
+			placeholder,
 		)
 
-		result, err := db.Exec(query, value)
+		result, err := db.Exec(query, primaryKeyValue)
 		if err != nil {
 			return 0, err
 		}
@@ -117,27 +190,18 @@ func RemoveRecord(db *sql.DB, dbName, tableName string, databaseType DatabaseTyp
 		}
 
 		if rowsAffected == 0 {
-			return 0, fmt.Errorf("RemoveRecord: non-existent record(s)")
+			return 0, fmt.Errorf("%s - record does not exist", getCurrentFuncName())
 		}
 
 		return rowsAffected, nil
 	}
 
-	if len(columns) != len(values) {
-		return 0, fmt.Errorf("RemoveRecord: columns and values length mismatch")
-	}
-	if len(columns) == 0 {
-		return 0, fmt.Errorf("RemoveRecord: columns array cannot be empty")
-	}
-
-	conditions := make([]string, len(columns))
-	for i, col := range columns {
-		conditions[i] = fmt.Sprintf("%s = %s", col, dbInfo.PlaceholderFormat(i+1))
-	}
+	recordKeys, recordValues := extractRecordData(record)
+	conditions := computeConditions(recordKeys, databaseType, placeholder)
 
 	query := fmt.Sprintf("DELETE FROM %s%s%s WHERE %s",
-		dbInfo.QuoteChar, tableName, dbInfo.QuoteChar,
-		strings.Join(conditions, " AND "),
+		quoteChar, tableName, quoteChar,
+		conditions,
 	)
 
 	stmt, err := db.Prepare(query)
@@ -146,7 +210,7 @@ func RemoveRecord(db *sql.DB, dbName, tableName string, databaseType DatabaseTyp
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(values...)
+	result, err := stmt.Exec(recordValues...)
 	if err != nil {
 		return 0, err
 	}

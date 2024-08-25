@@ -7,11 +7,13 @@ import (
 	"time"
 )
 
-func IsTableExistent(db *sql.DB, tableName string, dbType DatabaseType) error {
-	query, err := getQueryForIsTableExistent(tableName, dbType)
-	if err != nil {
-		return fmt.Errorf("IsTableExistent - grabbing db type specific query: %w", err)
+func doesTableExist(db *sql.DB, tableName string, dbType DatabaseType) error {
+	quoteChar, ok := quoteCharMap[dbType]
+	if !ok {
+		return fmt.Errorf("%s - database type not supported", getCurrentFuncName())
 	}
+
+	query := fmt.Sprintf("SELECT 1 FROM %s%s%s", quoteChar, tableName, quoteChar)
 
 	rows, err := db.Query(query)
 	if err != nil {
@@ -108,7 +110,7 @@ func GetTable(db *sql.DB, tableName string, dbType DatabaseType) ([]map[string]i
 }
 
 func GetColumns(db *sql.DB, tableName string, databaseType DatabaseType) ([]string, error) {
-	err := IsTableExistent(db, tableName, databaseType)
+	err := doesTableExist(db, tableName, databaseType)
 	if err != nil {
 		return nil, fmt.Errorf("GetColumns - %w", err)
 	}
@@ -152,7 +154,7 @@ func GetColumns(db *sql.DB, tableName string, databaseType DatabaseType) ([]stri
 
 func GetPrimaryKeys(db *sql.DB, dbName, tableName string, databaseType DatabaseType) ([]string, error) {
 	var err error
-	err = IsTableExistent(db, tableName, databaseType)
+	err = doesTableExist(db, tableName, databaseType)
 	if err != nil {
 		return nil, fmt.Errorf("GetColumns - %w", err)
 	}
