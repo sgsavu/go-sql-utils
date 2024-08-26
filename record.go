@@ -86,6 +86,36 @@ func InsertRecord(
 	return id, nil
 }
 
+func DuplicateRecord(
+	db *sql.DB,
+	dbName string,
+	tableName string,
+	record TableRecord,
+	databaseType DatabaseType,
+) error {
+	primaryKeys, err := GetPrimaryKeys(db, dbName, tableName, databaseType)
+	if err != nil {
+		return fmt.Errorf("%s - error grabbing primary keys: %w", getCurrentFuncName(), err)
+	}
+
+	columnTypes, err := getColumnTypes(db, dbName, tableName, databaseType)
+	if err != nil {
+		return fmt.Errorf("%s - error grabbing column types: %w", getCurrentFuncName(), err)
+	}
+
+	for _, key := range primaryKeys {
+		dataType := columnTypes[key]
+		record[key] = generateNewPrimaryKeyValue(dataType)
+	}
+
+	_, err = InsertRecord(db, tableName, record, databaseType)
+	if err != nil {
+		return fmt.Errorf("%s - error inserting record: %w", getCurrentFuncName(), err)
+	}
+
+	return nil
+}
+
 func EditRecord(
 	db *sql.DB,
 	tableName string,

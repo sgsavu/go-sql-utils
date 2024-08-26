@@ -207,6 +207,42 @@ func GetPrimaryKeys(db *sql.DB, dbName, tableName string, databaseType DatabaseT
 	return primaryKeys, nil
 }
 
+func getColumnTypes(db *sql.DB, dbName string, tableName string, databaseType DatabaseType) (map[string]string, error) {
+	placeholder, ok := placeholderMap[databaseType]
+	if !ok {
+		return nil, fmt.Errorf("%s - database type not supported", getCurrentFuncName())
+	}
+
+	// TODO: add support for other dbs
+	query := fmt.Sprintf(`
+		SELECT column_name, column_type
+		FROM information_schema.columns
+		WHERE table_schema = %s AND table_name = %s;
+	`, placeholder, placeholder)
+
+	rows, err := db.Query(query, dbName, tableName)
+	if err != nil {
+		return nil, fmt.Errorf("%s - %v", getCurrentFuncName(), err)
+	}
+	defer rows.Close()
+
+	columnTypes := make(map[string]string)
+
+	for rows.Next() {
+		var columnName, columnType string
+		if err := rows.Scan(&columnName, &columnType); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %v", err)
+		}
+		columnTypes[columnName] = columnType
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetPrimaryKeys: rows iteration error: %w", err)
+	}
+
+	return columnTypes, nil
+}
+
 func DuplicateTable(db *sql.DB, originalTableName, newTableName string, databaseType DatabaseType) error {
 	if newTableName != "" && !isValidTableName(newTableName) {
 		return fmt.Errorf("DuplicateTable: table names must contain only letters, numbers, underscores, and dashes")

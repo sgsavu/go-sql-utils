@@ -59,3 +59,14 @@ func getRandomString(n int) string {
 
 	return *(*string)(unsafe.Pointer(&b))
 }
+
+func generateNewPrimaryKeyValue(dataType string) interface{} {
+	switch dataType {
+	case "int":
+		return rand.Intn(1e6)
+	case "string":
+		return getRandomString(6)
+	default:
+		return nil
+	}
+}
