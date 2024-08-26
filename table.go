@@ -3,7 +3,6 @@ package sqlutils
 import (
 	"database/sql"
 	"fmt"
-	"regexp"
 	"time"
 )
 
@@ -209,9 +208,12 @@ func GetPrimaryKeys(db *sql.DB, dbName, tableName string, databaseType DatabaseT
 }
 
 func DuplicateTable(db *sql.DB, originalTableName, newTableName string, databaseType DatabaseType) error {
-	validName := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-	if !validName.MatchString(originalTableName) || !validName.MatchString(newTableName) {
+	if newTableName != "" && !isValidTableName(newTableName) {
 		return fmt.Errorf("DuplicateTable: table names must contain only letters, numbers, underscores, and dashes")
+	}
+
+	if newTableName == "" {
+		newTableName = fmt.Sprintf("%s-copy-%s", originalTableName, getRandomString(5))
 	}
 
 	createTableQuery, err := getQueryForDuplicateTableCreate(databaseType)
