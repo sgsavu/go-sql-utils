@@ -12,7 +12,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"                 // SQLite
 )
 
-func ConnectDB(connInfo *SQLConnectionInfo) (*sql.DB, error) {
+func ConnectDB(connInfo *DBConnection) (*sql.DB, error) {
 	connStr, err := getConnectionString(connInfo)
 	if err != nil {
 		return nil, err

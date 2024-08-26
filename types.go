@@ -12,13 +12,13 @@ const (
 	CockroachDB DatabaseType = "cockroachdb"
 )
 
-type SQLConnectionInfo struct {
-	Type   DatabaseType `json:"type"`
-	Host   string       `json:"host"`
-	Port   string       `json:"port"`
-	DBName string       `json:"dbName"`
-	User   string       `json:"user"`
-	Passwd string       `json:"password"`
+type DBConnection struct {
+	Type DatabaseType `reqHeader:"X-Db-Type"`
+	Host string       `reqHeader:"X-Db-Host"`
+	Port string       `reqHeader:"X-Db-Port"`
+	Name string       `reqHeader:"X-Db-Name"`
+	User string       `reqHeader:"X-Db-User"`
+	Pass string       `reqHeader:"X-Db-Pass"`
 }
 
 type TableRecord map[string]interface{}

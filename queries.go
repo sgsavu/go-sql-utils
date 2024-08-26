@@ -168,34 +168,34 @@ func getQueryForDuplicateTableInsert(databaseType DatabaseType) (string, error) 
 	return template, nil
 }
 
-func getConnectionString(connInfo *SQLConnectionInfo) (string, error) {
+func getConnectionString(connInfo *DBConnection) (string, error) {
 	switch connInfo.Type {
 	case PostgreSQL:
 		return fmt.Sprintf(
 			"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-			connInfo.Host, connInfo.Port, connInfo.User, connInfo.Passwd, connInfo.DBName,
+			connInfo.Host, connInfo.Port, connInfo.User, connInfo.Pass, connInfo.Name,
 		), nil
 	case MySQL:
 		return fmt.Sprintf(
 			"%s:%s@tcp(%s:%s)/%s",
-			connInfo.User, connInfo.Passwd, connInfo.Host, connInfo.Port, connInfo.DBName,
+			connInfo.User, connInfo.Pass, connInfo.Host, connInfo.Port, connInfo.Name,
 		), nil
 	case SQLite:
 		return fmt.Sprintf("file:%s?cache=shared&mode=rwc", connInfo.Host), nil
 	case SQLServer:
 		return fmt.Sprintf(
 			"server=%s;user id=%s;password=%s;database=%s",
-			connInfo.Host, connInfo.User, connInfo.Passwd, connInfo.DBName,
+			connInfo.Host, connInfo.User, connInfo.Pass, connInfo.Name,
 		), nil
 	case Oracle:
 		return fmt.Sprintf(
 			"user=%s;password=%s;connectString=%s/%s",
-			connInfo.User, connInfo.Passwd, connInfo.Host, connInfo.DBName,
+			connInfo.User, connInfo.Pass, connInfo.Host, connInfo.Name,
 		), nil
 	case CockroachDB:
 		return fmt.Sprintf(
 			"postgresql://%s:%s@%s:%s/%s?sslmode=disable",
-			connInfo.User, connInfo.Passwd, connInfo.Host, connInfo.Port, connInfo.DBName,
+			connInfo.User, connInfo.Pass, connInfo.Host, connInfo.Port, connInfo.Name,
 		), nil
 	default:
 		return "", fmt.Errorf("unsupported database type: %s", connInfo.Type)
